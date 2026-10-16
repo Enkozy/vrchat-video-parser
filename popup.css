@@ -677,3 +677,12 @@ footer {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ============ QQ 群号（可点击复制） ============ */
+.f-row.credit.qq {
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.f-row.credit.qq:hover {
+  color: #9d8cff;
+}

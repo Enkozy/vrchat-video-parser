@@ -12,6 +12,7 @@ const btnClear = $('btnClear');
 const btnCopyBest = $('btnCopyBest');
 const chkAll = $('chkAll');
 const btnDiag = $('btnDiag');
+const qqGroupEl = $('qqGroup');
 const hlsBanner = $('hlsBanner');
 const dashBanner = $('dashBanner');
 
@@ -841,6 +842,13 @@ async function scanPage() {
     const ok = await copyText(buildDiagnostics());
     toast(ok ? '诊断信息已复制，粘贴到聊天即可 ✓' : '复制失败');
   });
+
+  if (qqGroupEl) {
+    qqGroupEl.addEventListener('click', async () => {
+      const ok = await copyText('1130646085');
+      toast(ok ? '群号已复制：1130646085 ✓' : '复制失败');
+    });
+  }
 
   chkAll.addEventListener('change', () => {
     showAll = chkAll.checked;

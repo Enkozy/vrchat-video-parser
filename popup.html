@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>VRChat 视频解析器</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="bg" aria-hidden="true">
+    <div class="blob b1"></div>
+    <div class="blob b2"></div>
+    <div class="blob b3"></div>
+  </div>
+  <div class="app">
+  <header>
+    <div class="logo"><span class="play">▶</span> VRChat 视频解析器</div>
+    <div class="hdr-actions">
+      <button id="btnScan" class="btn small" title="重新扫描当前页面">🔄 扫描</button>
+      <button id="btnClear" class="btn small" title="清空本页记录">🗑 清空</button>
+    </div>
+  </header>
+
+  <div id="pageCard"></div>
+
+  <div class="toolbar">
+    <button id="btnCopyBest" class="btn primary">📋 复制首选可用链接</button>
+    <label class="show-all"><input type="checkbox" id="chkAll" /> 显示全部结果</label>
+  </div>
+
+  <div id="hlsBanner"></div>
+  <div id="dashBanner"></div>
+
+  <ul id="list"></ul>
+  <div id="empty">
+    <div class="empty-icon">🎬</div>
+    <div>暂无检测到的视频</div>
+    <div class="empty-tip">打开视频页面并<b>播放视频</b>，然后点击「🔄 扫描」。</div>
+    <div class="empty-tip2">若刚安装插件，请先刷新视频页面再试。</div>
+  </div>
+
+  <footer>
+    <div class="f-row"><span class="dot ok"></span> MP4 / WebM —— VRChat 可直接播放</div>
+    <div class="f-row"><span class="dot warn"></span> M3U8 / M4S —— VRChat 不支持，需转换</div>
+    <div class="f-row tiny">部分网站校验 Referer，直链可能无法在 VRChat 中播放。</div>
+    <button id="btnDiag" class="btn small diag">🩺 复制诊断信息（反馈问题时附上）</button>
+    <div class="f-row credit">VRChat 视频解析器 v1.9.1 · 作者：知音illya</div>
+  </footer>
+
+  <div id="toast"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

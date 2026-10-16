@@ -1,0 +1,20 @@
+# 打包产物 / 临时文件
+*.zip
+*.7z
+*.rar
+
+# 系统文件
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+
+# 合并脚本的输出
+tools/merged/
+merged/
+bili_*.mp4
+anime.mp4

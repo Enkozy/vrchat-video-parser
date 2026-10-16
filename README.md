@@ -40,7 +40,7 @@
 ### 方式一：克隆本仓库后加载（推荐）
 
 ```bash
-git clone https://github.com/<你的用户名>/vrchat-video-parser.git
+git clone https://github.com/Enkozy/vrchat-video-parser.git
 ```
 
 1. Edge 地址栏输入 `edge://extensions/`

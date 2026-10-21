@@ -686,3 +686,199 @@ footer {
 .f-row.credit.qq:hover {
   color: #9d8cff;
 }
+
+/* ============ 直播提示横幅 ============ */
+#liveBanner {
+  padding: 0 14px;
+}
+.live-box {
+  margin-top: 8px;
+  background: rgba(255, 82, 104, 0.09);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 92, 112, 0.34);
+  border-radius: 12px;
+  padding: 10px 12px;
+  animation: cardIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.live-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 3px;
+  color: #ff9aa8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff4d6a;
+  box-shadow: 0 0 0 0 rgba(255, 77, 106, 0.7);
+  animation: livePulse 1.8s infinite;
+}
+@keyframes livePulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 77, 106, 0.65);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(255, 77, 106, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 77, 106, 0);
+  }
+}
+.live-text {
+  font-size: 12px;
+  color: #b6bfd2;
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+.live-text b {
+  color: #ffc2cb;
+}
+.live-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ============ 分P 面板 ============ */
+#pagesPanel {
+  padding: 0 14px;
+}
+.pages-box {
+  margin-top: 8px;
+  background: rgba(120, 160, 255, 0.07);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(120, 160, 255, 0.26);
+  border-radius: 12px;
+  padding: 10px 12px;
+  animation: cardIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.pages-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pages-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #b9d0ff;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pages-count {
+  font-size: 11px;
+  color: #8fa4c8;
+  background: rgba(120, 160, 255, 0.14);
+  border-radius: 20px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.pages-list {
+  max-height: 176px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 2px;
+}
+.pages-list::-webkit-scrollbar {
+  width: 6px;
+}
+.pages-list::-webkit-scrollbar-thumb {
+  background: rgba(140, 160, 200, 0.35);
+  border-radius: 3px;
+}
+.page-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+  transition:
+    background 0.18s,
+    border-color 0.18s;
+}
+.page-row:hover {
+  background: rgba(120, 160, 255, 0.1);
+  border-color: rgba(120, 160, 255, 0.28);
+}
+.page-row.current {
+  border-color: rgba(120, 160, 255, 0.5);
+  background: rgba(120, 160, 255, 0.14);
+}
+.page-idx {
+  font-size: 11px;
+  color: #7f93b8;
+  min-width: 26px;
+  font-variant-numeric: tabular-nums;
+}
+.page-name {
+  flex: 1;
+  font-size: 12px;
+  color: #d3dcec;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.page-dur {
+  font-size: 11px;
+  color: #7f93b8;
+  font-variant-numeric: tabular-nums;
+}
+.page-btn {
+  flex: none;
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 7px;
+  border: 1px solid rgba(120, 160, 255, 0.35);
+  background: rgba(120, 160, 255, 0.12);
+  color: #bcd2ff;
+  cursor: pointer;
+  transition:
+    background 0.18s,
+    transform 0.18s;
+}
+.page-btn:hover {
+  background: rgba(120, 160, 255, 0.28);
+}
+.page-btn:active {
+  transform: scale(0.95);
+}
+.page-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.page-btn.done {
+  border-color: rgba(46, 204, 113, 0.45);
+  color: #8ff0b6;
+  background: rgba(46, 204, 113, 0.14);
+}
+.pages-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.badge.part {
+  background: rgba(120, 160, 255, 0.18);
+  color: #b9d0ff;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.badge.live {
+  background: rgba(255, 92, 112, 0.18);
+  color: #ff9aa8;
+}

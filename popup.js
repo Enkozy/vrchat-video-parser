@@ -15,6 +15,8 @@ const btnDiag = $('btnDiag');
 const qqGroupEl = $('qqGroup');
 const hlsBanner = $('hlsBanner');
 const dashBanner = $('dashBanner');
+const liveBanner = $('liveBanner');
+const pagesPanelEl = $('pagesPanel');
 
 let tabId = null;
 let tabUrl = '';
@@ -25,6 +27,8 @@ let showAll = false;
 let preferQn = 80;
 let toastTimer = null;
 let scanning = false;
+let pagesInfo = null;
+let parsingPages = false;
 
 // ---------- 工具 ----------
 function toast(text) {
@@ -112,10 +116,15 @@ function analyze(v) {
     'bilibili-preview': 'B站试看',
     'bilibili-dash': 'B站DASH',
     'bilibili-api': '公共解析',
+    'bilibili-live': 'B站直播',
+    'live-page': '直播抓取',
+    'page-src': '页面源码',
     resolver: '中转服务',
     network: '网络嗅探',
     DOM: '页面元素',
   }[src] || '检测';
+
+  const isLive = !!v.live || src === 'bilibili-live' || src === 'live-page';
 
   let level = 2;
   let note = '可能不支持，建议测试';
@@ -129,6 +138,10 @@ function analyze(v) {
   } else if (src === 'bilibili-dash') {
     level = 3;
     note = 'DASH 分片，VRChat 不支持';
+  } else if (isLive) {
+    format = ext === 'm3u8' ? 'M3U8' : 'FLV';
+    level = 2;
+    note = '直播流：VRChat 不能直接播，用顶部「转推/录制」按钮';
   } else if (format === 'M3U8') {
     level = 2;
     note = 'HLS 直播/切片，VRChat 不支持';
@@ -146,7 +159,12 @@ function analyze(v) {
   // 探测结果修正：无法从 URL/MIME 判断时，用真实响应头判断"是不是完整文件、能不能分享"
   const p = probes[v.url];
   const probed =
-    p && p.ok && src !== 'bilibili-dash' && src !== 'bilibili-preview' && src !== 'resolver';
+    p &&
+    p.ok &&
+    !isLive &&
+    src !== 'bilibili-dash' &&
+    src !== 'bilibili-preview' &&
+    src !== 'resolver';
   if (probed) {
     const pt = String(p.type || '').toLowerCase();
     const mb = p.size ? p.size / 1048576 : 0;
@@ -173,7 +191,7 @@ function analyze(v) {
     level = 3;
     note = '链接已过期，请重新扫描';
   }
-  return { format, level, note, label };
+  return { format, level, note, label, isLive };
 }
 
 // ---------- 直链探测调度：给"看不出来是什么"的链接做真实类型/体积检测 ----------
@@ -188,7 +206,7 @@ function rememberProbe(x) {
 function scheduleProbe() {
   const targets = videos
     .filter((v) => {
-      if (!v.url || probes[v.url]) return false;
+      if (!v.url || probes[v.url] || v.live) return false;
       const a = analyze(v);
       return a.format === 'LINK' || a.format === 'M3U8' || a.format === 'TS' || !v.mime;
     })
@@ -371,6 +389,261 @@ function renderHlsBanner(groups) {
   hlsBanner.appendChild(box);
 }
 
+// ---------- 直播流处理：VRChat 不能直接播 FLV/HLS，给出转推/录制方案 ----------
+function liveReferer(url) {
+  try {
+    const h = new URL(url).hostname;
+    if (/bilibili|bilivideo|hdslb/i.test(h)) return 'https://live.bilibili.com/';
+    if (/douyu/i.test(h)) return 'https://www.douyu.com/';
+    if (/huya|msstatic/i.test(h)) return 'https://www.huya.com/';
+  } catch (e) {
+    // ignore
+  }
+  try {
+    if (tabUrl) return new URL(tabUrl).origin + '/';
+  } catch (e) {
+    // ignore
+  }
+  return 'https://example.com/';
+}
+
+function buildLiveRelayCommand(streamUrl) {
+  return (
+    `ffmpeg -headers "Referer: ${liveReferer(streamUrl)}" -user_agent "Mozilla/5.0" ` +
+    `-i "${streamUrl}" -c copy -f flv "rtmp://live.twitch.tv/app/<你的串流密钥>"`
+  );
+}
+
+function buildLiveRecordCommand(streamUrl) {
+  return (
+    `ffmpeg -headers "Referer: ${liveReferer(streamUrl)}" -user_agent "Mozilla/5.0" ` +
+    `-i "${streamUrl}" -c copy -t 3600 "live_record.mp4"`
+  );
+}
+
+function renderLiveBanner(groups) {
+  liveBanner.innerHTML = '';
+  const pool = [];
+  groups.forEach((g) => g.forEach((v) => pool.push(v)));
+  const lives = pool
+    .filter((v) => analyze(v).isLive)
+    .sort(
+      (a, b) =>
+        (b.source === 'bilibili-live' ? 1 : 0) - (a.source === 'bilibili-live' ? 1 : 0) ||
+        b.time - a.time
+    );
+  if (!lives.length) return;
+
+  const best = lives[0];
+  const siteName = best.source === 'bilibili-live' ? 'B站直播' : '直播站点';
+
+  const box = document.createElement('div');
+  box.className = 'live-box';
+  box.innerHTML =
+    `<div class="live-title"><span class="live-dot"></span>已抓到直播流（${escapeHtml(siteName)}）</div>` +
+    `<div class="live-text">` +
+    `VRChat 播放器<b>不能直接播放 FLV / HLS 直播流</b>，直播要先转成它能吃的地址。三条路：<br>` +
+    `① <b>转推到 Twitch / YouTube 直播</b>（最省事，VRChat 原生支持这两个直播链接）；<br>` +
+    `② 自建 RTMP 中继，把命令里的推流地址换成你的服务器；<br>` +
+    `③ 临时<b>录制</b>成 MP4 再分享（适合只想给房间里的人放一会儿）。` +
+    `</div>`;
+
+  const row = document.createElement('div');
+  row.className = 'live-actions';
+
+  const b1 = document.createElement('button');
+  b1.className = 'btn small';
+  b1.textContent = '📋 复制直播流地址';
+  b1.addEventListener('click', async () => {
+    const ok = await copyText(best.url);
+    toast(ok ? '直播流地址已复制 ✓（下面两条命令也用这条）' : '复制失败');
+  });
+
+  const b2 = document.createElement('button');
+  b2.className = 'btn small';
+  b2.textContent = '⚙️ 复制转推命令';
+  b2.title = '把直播流转推到 Twitch / YouTube，再用 VRChat 支持的直播链接播放';
+  b2.addEventListener('click', async () => {
+    const ok = await copyText(buildLiveRelayCommand(best.url));
+    toast(ok ? '转推命令已复制：把 <你的串流密钥> 换成自己的 ✓' : '复制失败');
+  });
+
+  const b3 = document.createElement('button');
+  b3.className = 'btn small';
+  b3.textContent = '📹 复制录制命令';
+  b3.title = '把直播录成 MP4 文件，再上传直链给所有人看';
+  b3.addEventListener('click', async () => {
+    const ok = await copyText(buildLiveRecordCommand(best.url));
+    toast(ok ? '录制命令已复制：运行后会得到 live_record.mp4 ✓' : '复制失败');
+  });
+
+  row.appendChild(b1);
+  row.appendChild(b2);
+  row.appendChild(b3);
+  box.appendChild(row);
+  liveBanner.appendChild(box);
+}
+
+// ---------- 分P 面板 ----------
+function fmtDuration(sec) {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  return h ? `${h}:${pad(m)}:${pad(ss)}` : `${m}:${pad(ss)}`;
+}
+
+async function refreshPages() {
+  pagesInfo = null;
+  if (tabId == null) {
+    renderPagesPanel();
+    return;
+  }
+  try {
+    const r = await chrome.runtime.sendMessage({ type: 'GET_PAGES', tabId });
+    if (r && r.ok && r.pages) pagesInfo = r.pages;
+  } catch (e) {
+    pagesInfo = null;
+  }
+  renderPagesPanel();
+}
+
+function markPageDone(pageNo) {
+  const btn = pagesPanelEl.querySelector(`.page-btn[data-page="${pageNo}"]`);
+  if (!btn) return;
+  btn.textContent = '✓ 已解析';
+  btn.classList.add('done');
+  btn.disabled = true;
+}
+
+async function parseOnePage(page) {
+  const btn = pagesPanelEl.querySelector(`.page-btn[data-page="${page.page}"]`);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '解析中…';
+  }
+  let resp = null;
+  try {
+    resp = await chrome.tabs.sendMessage(tabId, {
+      type: 'PARSE_P',
+      page: page.page,
+      cid: page.cid,
+    });
+  } catch (e) {
+    resp = null;
+  }
+  if (!resp || !resp.ok) {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '解析';
+    }
+    toast('该分P解析失败：' + ((resp && resp.error) || '页面无响应，请刷新页面后重试'));
+    return false;
+  }
+  markPageDone(page.page);
+  await sleep(250);
+  await getVideos();
+  render();
+  return true;
+}
+
+async function parseAllPages() {
+  if (parsingPages || !pagesInfo) return;
+  const list = pagesInfo.pages || [];
+  if (!list.length) return;
+  const limit = Math.min(list.length, 20);
+  parsingPages = true;
+  const allBtn = pagesPanelEl.querySelector('.page-all-btn');
+  if (allBtn) {
+    allBtn.disabled = true;
+    allBtn.textContent = '解析中…';
+  }
+  let done = 0;
+  for (let i = 0; i < limit; i++) {
+    const page = list[i];
+    const btn = pagesPanelEl.querySelector(`.page-btn[data-page="${page.page}"]`);
+    if (btn && !btn.classList.contains('done')) {
+      btn.textContent = `解析中 ${i + 1}/${limit}`;
+    }
+    if (await parseOnePage(page)) done += 1;
+    await sleep(300);
+  }
+  parsingPages = false;
+  if (allBtn) {
+    allBtn.disabled = false;
+    allBtn.textContent = `⚡ 解析全部分P（最多 20 个）`;
+  }
+  toast(
+    `已解析 ${done}/${limit} 个分P` +
+      (list.length > limit ? '（分P超过 20 个，只解析了前 20）' : '')
+  );
+}
+
+function renderPagesPanel() {
+  pagesPanelEl.innerHTML = '';
+  const pages = (pagesInfo && pagesInfo.pages) || [];
+  if (pages.length < 2) return;
+
+  const box = document.createElement('div');
+  box.className = 'pages-box';
+
+  const head = document.createElement('div');
+  head.className = 'pages-head';
+  const title = document.createElement('div');
+  title.className = 'pages-title';
+  title.textContent = '📚 分P：' + (pagesInfo.title || '未命名视频');
+  const count = document.createElement('div');
+  count.className = 'pages-count';
+  count.textContent = `${pages.length} 个分P`;
+  head.appendChild(title);
+  head.appendChild(count);
+  box.appendChild(head);
+
+  const list = document.createElement('div');
+  list.className = 'pages-list';
+  pages.forEach((p) => {
+    const row = document.createElement('div');
+    row.className = 'page-row' + (p.page === pagesInfo.current ? ' current' : '');
+    const idx = document.createElement('span');
+    idx.className = 'page-idx';
+    idx.textContent = `P${p.page}`;
+    const name = document.createElement('span');
+    name.className = 'page-name';
+    name.textContent = p.part || `第 ${p.page} 段`;
+    name.title = p.part || '';
+    const dur = document.createElement('span');
+    dur.className = 'page-dur';
+    dur.textContent = fmtDuration(p.duration);
+    const btn = document.createElement('button');
+    btn.className = 'page-btn';
+    btn.dataset.page = String(p.page);
+    btn.textContent = '解析';
+    btn.title = '解析这个分P，结果会出现在下方列表';
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await parseOnePage(p);
+    });
+    row.appendChild(idx);
+    row.appendChild(name);
+    row.appendChild(dur);
+    row.appendChild(btn);
+    list.appendChild(row);
+  });
+  box.appendChild(list);
+
+  const actions = document.createElement('div');
+  actions.className = 'pages-actions';
+  const allBtn = document.createElement('button');
+  allBtn.className = 'btn small page-all-btn';
+  allBtn.textContent = '⚡ 解析全部分P（最多 20 个）';
+  allBtn.title = '依次解析每个分P，会多请求几次接口，请耐心等待';
+  allBtn.addEventListener('click', parseAllPages);
+  actions.appendChild(allBtn);
+  box.appendChild(actions);
+
+  pagesPanelEl.appendChild(box);
+}
+
 function isBiliVideoPage() {
   try {
     const u = new URL(tabUrl);
@@ -430,6 +703,7 @@ function render() {
       });
   const rows = flat.sort((x, y) => x.a.level - y.a.level || y.v.time - x.v.time);
 
+  renderLiveBanner(groups);
   renderHlsBanner(groups);
   renderDashBanner(groups);
 
@@ -460,6 +734,10 @@ function render() {
     top.innerHTML =
       `<span class="badge fmt">${a.format}</span>` +
       `<span class="badge src">${escapeHtml(a.label)}</span>` +
+      (a.isLive ? `<span class="badge live">直播</span>` : '') +
+      (v.part
+        ? `<span class="badge part" title="${escapeHtml(v.part)}">${escapeHtml(v.part)}</span>`
+        : '') +
       (v.quality
         ? `<span class="badge qn">${escapeHtml(showAll && v.node ? `${v.quality} · ${v.node}` : v.quality)}</span>`
         : '') +
@@ -591,7 +869,30 @@ function renderPageCard(url) {
   const bm = u.pathname.match(/^\/video\/(BV[0-9A-Za-z]+|av\d+)/i);
   const em = u.pathname.match(/^\/bangumi\/play\/(ep\d+|ss\d+)/i);
 
-  if (YT_HOSTS.has(host)) {
+  const isBiliLive =
+    host === 'live.bilibili.com' ||
+    (host.endsWith('bilibili.com') && /^\/(blanc\/)?\d+\/?$/.test(u.pathname));
+  const isLiveSite = /(^|\.)(douyu|huya|douyin|kuaishou|twitch)\.(com|tv)$/i.test(host);
+
+  if (isBiliLive) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML =
+      `<div class="card-title">🔴 Bilibili 直播</div>` +
+      `<div class="card-text">直播流由插件<b>自动解析</b>（官方 playUrl 接口，免登录即可拿原画 FLV）。<br>` +
+      `抓到后顶部会出现红色提示，提供「复制直播流地址 / 转推命令 / 录制命令」三件套。<br>` +
+      `⚠️ VRChat 播放器不认 FLV / HLS，直播需要先<b>转推</b>到 Twitch / YouTube 才能直接在房间里播。</div>`;
+    pageCardEl.appendChild(card);
+  } else if (isLiveSite) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML =
+      `<div class="card-title">🔴 直播页面</div>` +
+      `<div class="card-text">斗鱼 / 虎牙 / 抖音这类站点，流地址由播放器动态签发（带签名 + 短时效）。<br>` +
+      `用法：<b>先让直播画面跑起来</b>（进入房间、等几秒），再点右上角「🔄 扫描」，插件会把 FLV / M3U8 流抓出来。<br>` +
+      `抓到后顶部会给出<b>转推 / 录制</b>命令——VRChat 不能直接播放直播流。</div>`;
+    pageCardEl.appendChild(card);
+  } else if (YT_HOSTS.has(host)) {
     const card = document.createElement('div');
     card.className = 'card youtube';
     card.innerHTML =
@@ -811,6 +1112,7 @@ async function scanPage() {
   scanning = false;
   btnScan.disabled = false;
   btnScan.textContent = '🔄 扫描';
+  await refreshPages();
 }
 
 // ---------- 初始化 ----------
@@ -835,6 +1137,14 @@ async function scanPage() {
   tabUrl = (tab && tab.url) || '';
 
   renderPageCard(tabUrl);
+
+  // 版本号与 manifest 保持一致
+  try {
+    const verEl = $('ver');
+    if (verEl) verEl.textContent = 'v' + chrome.runtime.getManifest().version;
+  } catch (e) {
+    // ignore
+  }
 
   btnScan.addEventListener('click', scanPage);
 

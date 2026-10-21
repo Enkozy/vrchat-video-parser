@@ -1,15 +1,28 @@
 // ============================================================
 // VRChat 视频解析器 - 后台 Service Worker
 // 功能：
-//  1. 通过 webRequest 嗅探网络中的视频流（MP4/WebM/M3U8/M4S 等）
+//  1. 通过 webRequest 嗅探网络中的视频流（MP4/WebM/M3U8/FLV 等，含直播流）
 //  2. 接收页面/弹窗发来的记录消息，按标签页存储到 storage.session
 //  3. 为 Bilibili 解析提供后台兜底请求（可携带登录 Cookie）
+//  4. 缓存 B 站分P列表（供弹窗渲染分P面板）
 // ============================================================
 
 const MEDIA_URL_RE = /\.(mp4|webm|m3u8|mkv|flv|mov|ogv)(\?|#|$)/i;
-const MAX_PER_TAB = 100;
+const MAX_PER_TAB = 120;
 
 const keyOf = (tabId) => `videos_${tabId}`;
+const pagesKeyOf = (tabId) => `pages_${tabId}`;
+
+// 直播流去重键：CDN 会不断换签名参数刷新同一个流，按「域名 + 路径」归一
+function streamKeyOf(url) {
+  try {
+    const u = new URL(String(url || ''));
+    if (!/\.(flv|m3u8)$/i.test(u.pathname)) return '';
+    return `${u.origin}${u.pathname}`;
+  } catch (e) {
+    return '';
+  }
+}
 
 // 每个标签页串行化写入，避免并发覆盖
 const writeChains = {};
@@ -31,6 +44,9 @@ async function doRecord(tabId, url, mime, source, extra) {
     list = list.filter((v) => !(v.group === group && v.node === node));
   }
   list = list.filter((v) => v.url !== url);
+  // 直播流：同一个流只留最新一条（签名参数每次都换，但域名+路径不变）
+  const sk = streamKeyOf(url);
+  if (sk) list = list.filter((v) => streamKeyOf(v.url) !== sk);
   list.unshift({
     url,
     mime: mime || '',
@@ -41,6 +57,8 @@ async function doRecord(tabId, url, mime, source, extra) {
     expires: (extra && extra.expires) || 0,
     group: (extra && extra.group) || '',
     node: (extra && extra.node) || '',
+    part: (extra && extra.part) || '',
+    live: !!(extra && extra.live),
   });
   if (list.length > MAX_PER_TAB) list.length = MAX_PER_TAB;
   try {
@@ -75,8 +93,8 @@ chrome.webRequest.onResponseStarted.addListener(
     }
     // HLS 的 .ts / DASH 的 .m4s 分片（每个只有几秒）一律不记录
     if (/\.(ts|m4s)(\?|#|$)/i.test(details.url) || /^video\/mp2t/i.test(ct)) return;
-    const isVideoMime = /^video\//i.test(ct);
-    const isHlsMime = /^application\/vnd\.apple\.mpegurl/i.test(ct);
+    const isVideoMime = /^video\//i.test(ct) || /x-flv/i.test(ct);
+    const isHlsMime = /^application\/(vnd\.apple\.mpegurl|x-mpegurl)/i.test(ct);
     const isMediaExt = MEDIA_URL_RE.test(details.url);
     // 注意：.m4s/.ts 等 DASH/HLS 分片（每个只有几秒）已过滤，只保留整段媒体
     if (isVideoMime || isHlsMime || isMediaExt) {
@@ -118,11 +136,55 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       expires: msg.expires || 0,
       group: msg.group || '',
       node: msg.node || '',
+      part: msg.part || '',
+      live: !!msg.live,
     }).then(() => {
       try {
         sendResponse({ ok: true });
       } catch (e) {}
     });
+    return true;
+  }
+
+  // ---------- B 站分P列表缓存（内容脚本上报 → 弹窗读取） ----------
+  if (msg.type === 'PAGES') {
+    const tabId = sender && sender.tab ? sender.tab.id : null;
+    if (tabId == null || tabId < 0) return;
+    const payload = {
+      title: msg.title || '',
+      bvid: msg.bvid || '',
+      href: msg.href || '',
+      current: msg.current || 1,
+      pages: Array.isArray(msg.pages) ? msg.pages : [],
+      time: Date.now(),
+    };
+    chrome.storage.session
+      .set({ [pagesKeyOf(tabId)]: payload })
+      .then(() => {
+        try {
+          sendResponse({ ok: true });
+        } catch (e) {}
+      })
+      .catch(() => {
+        try {
+          sendResponse({ ok: false });
+        } catch (e) {}
+      });
+    return true;
+  }
+
+  if (msg.type === 'GET_PAGES') {
+    (async () => {
+      let pages = null;
+      try {
+        pages = (await chrome.storage.session.get(pagesKeyOf(msg.tabId)))[pagesKeyOf(msg.tabId)] || null;
+      } catch (e) {
+        pages = null;
+      }
+      try {
+        sendResponse({ ok: true, pages });
+      } catch (e) {}
+    })();
     return true;
   }
 
@@ -144,7 +206,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'CLEAR') {
     (async () => {
       try {
-        await chrome.storage.session.remove(keyOf(msg.tabId));
+        await chrome.storage.session.remove([keyOf(msg.tabId), pagesKeyOf(msg.tabId)]);
       } catch (e) {}
       try {
         sendResponse({ ok: true });
@@ -233,5 +295,5 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // ---------- 清理 ----------
 chrome.tabs.onRemoved.addListener((tabId) => {
-  chrome.storage.session.remove(keyOf(tabId)).catch(() => {});
+  chrome.storage.session.remove([keyOf(tabId), pagesKeyOf(tabId)]).catch(() => {});
 });

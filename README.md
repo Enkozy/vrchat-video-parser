@@ -56,7 +56,7 @@ git clone https://github.com/Enkozy/vrchat-video-parser.git
 
 ### 方式三：使用发布包
 
-直接下载：[VRChat-Video-Parser-v1.9.2.zip](https://github.com/Enkozy/vrchat-video-parser/releases/download/v1.9.2/VRChat-Video-Parser-v1.9.2.zip)
+直接下载：[VRChat-Video-Parser-v2.0.0.zip](https://github.com/Enkozy/vrchat-video-parser/releases/download/v2.0.0/VRChat-Video-Parser-v2.0.0.zip)
 （整合包含插件本体、一键合并工具与图文说明；也可以在 [Releases](../../releases) 页面查看全部版本）
 
 ## 🎮 使用方法

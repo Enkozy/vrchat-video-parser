@@ -28,7 +28,7 @@ VRChat 视频解析插件｜B站分P+直播都能解析，复制粘贴就能看�
 
 📥 下载地址
 · GitHub 开源仓库（欢迎 Star ⭐）：https://github.com/Enkozy/vrchat-video-parser
-· GitHub 直链下载：https://github.com/Enkozy/vrchat-video-parser/releases/download/v2.0.0/VRChat-Video-Parser-v2.0.0.zip
+· GitHub 直链下载：https://github.com/Enkozy/vrchat-video-parser/releases/download/v2.0.1/VRChat-Video-Parser-v2.0.1.zip
 · 网盘整合包（含一键合并工具与图文说明）：<网盘链接>　提取码：<xxxx>
 
 📦 安装步骤

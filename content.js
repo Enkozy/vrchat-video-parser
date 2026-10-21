@@ -21,6 +21,10 @@
   const toHttps = (u) => String(u || '').replace(/^http:\/\//i, 'https://');
   const isRealUrl = (u) => !!u && !/^(blob|data):/i.test(String(u));
 
+  // 主世界（inject.js）转交过来的页面状态：__INITIAL_STATE__ 在隔离世界读不到
+  // { p, bvid, aid, cid, title, pages: [{cid, page, part, duration}] }
+  let pageStateCache = null;
+
   function post(record) {
     try {
       chrome.runtime.sendMessage(record).catch(() => {});
@@ -49,6 +53,18 @@
       }
     } else if (d.type === 'NAVIGATE') {
       scheduleRun(true);
+    } else if (d.type === 'STATE') {
+      // 分P 状态：bvid / 当前 cid / 全部分P 列表
+      pageStateCache = {
+        href: d.href || '',
+        p: parseInt(d.p, 10) || 0,
+        bvid: d.bvid || '',
+        aid: d.aid || 0,
+        cid: d.cid || 0,
+        title: d.title || '',
+        pages: Array.isArray(d.pages) ? d.pages : [],
+        time: Date.now(),
+      };
     }
   });
 
@@ -185,6 +201,8 @@
     }
   }
 
+  const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
   // 后台优先（可带登录 Cookie + Referer），失败回退页面上下文请求
   async function biliJson(url) {
     try {
@@ -235,10 +253,12 @@
     const h5 = mode === 'h5';
     const durl = (data.durl || []).filter((d) => d && d.url);
     const seen = new Set();
+    let added = 0;
     const add = async (url, node) => {
       const https = toHttps(url);
       if (!isRealUrl(https) || seen.has(https)) return;
       seen.add(https);
+      added += 1;
       await recordBili(https, 'video/mp4', source, tag, deadlineOf(https), groupId, node, part);
     };
 
@@ -272,7 +292,7 @@
           );
         }
       }
-      return;
+      return added;
     }
 
     for (const d of durl) {
@@ -295,10 +315,12 @@
         if (v) await add(v, '海外节点');
       }
     }
+    return added;
   }
 
   function cidFromState() {
     try {
+      if (pageStateCache && pageStateCache.cid) return pageStateCache.cid;
       const st = window.__INITIAL_STATE__ || {};
       if (st.videoData && st.videoData.cid) return st.videoData.cid;
     } catch (e) {
@@ -310,12 +332,23 @@
   // 当前分 P 序号（多 P 视频用）
   function pageFromState() {
     try {
+      if (pageStateCache && pageStateCache.p) return pageStateCache.p;
       const st = window.__INITIAL_STATE__ || {};
       const p = parseInt(st.p, 10);
       return Number.isFinite(p) && p > 0 ? p : 1;
     } catch (e) {
       return 1;
     }
+  }
+
+  // 等主世界把页面状态送过来（最多等 timeout 毫秒）
+  async function waitState(timeout) {
+    const t0 = Date.now();
+    const cap = timeout || 1000;
+    while (!pageStateCache && Date.now() - t0 < cap) {
+      await sleep(100);
+    }
+    return pageStateCache;
   }
 
   // URL 上的 ?p=3 比页面状态更可信（SPA 切换分P时状态可能滞后）
@@ -348,7 +381,8 @@
     }
   }
 
-  async function resolvePlayurl(apiUrl) {
+  // 返回 { data, code, msg }：code/msg 用于把失败原因告诉用户（而不是静默失败）
+  async function resolvePlayurlFull(apiUrl) {
     // 优先由后台请求：可附带登录 Cookie（SESSDATA）+ 画质提示 Cookie + Referer，
     // 登录后才有机会拿到 1080P（未登录一般只有 480P 以下）
     let json = null;
@@ -360,13 +394,20 @@
     }
     // 后台失败时退回页面上下文请求（自带页面 Cookie）
     if (!json || json.code !== 0) {
-      json = await fetchJson(apiUrl, {
+      const tmp = await fetchJson(apiUrl, {
         credentials: 'include',
         signal: AbortSignal.timeout(6000),
       });
+      if (tmp) json = tmp;
     }
-    if (!json || json.code !== 0) return null;
-    return json.data || json.result || null;
+    if (!json) return { data: null, code: 0, msg: '网络请求失败' };
+    if (json.code !== 0) return { data: null, code: json.code, msg: json.message || '' };
+    const data = json.data || json.result || null;
+    return { data, code: 0, msg: '' };
+  }
+
+  async function resolvePlayurl(apiUrl) {
+    return (await resolvePlayurlFull(apiUrl)).data;
   }
 
   // 用户选择的目标画质（1080P=80 / 720P=64 / 480P=32…），默认 1080P
@@ -405,9 +446,11 @@
     const dash = data.dash || {};
     const v = pickDashVideo(dash);
     const a = pickDashAudio(dash);
+    let added = 0;
     if (v) {
       const url = toHttps(v.baseUrl || v.base_url || '');
       const h = v.height || 0;
+      added += 1;
       await recordBili(
         url,
         'video/mp4',
@@ -421,6 +464,7 @@
     }
     if (a) {
       const url = toHttps(a.baseUrl || a.base_url || '');
+      added += 1;
       await recordBili(
         url,
         'audio/mp4',
@@ -432,6 +476,7 @@
         part
       );
     }
+    return added;
   }
 
   // ---------- 分P 信息（view 接口：标题 + 全部分P） ----------
@@ -454,14 +499,59 @@
     }));
   }
 
+  // 首选：从页面状态里的 videoData.pages 拿分P（零网络请求、最稳，
+  // 接口被风控或需要签名时也不会失效）。状态由 inject.js 从主世界转交。
+  function pagesFromState(expectedId) {
+    let src = null;
+    try {
+      if (pageStateCache && pageStateCache.pages && pageStateCache.pages.length) {
+        src = pageStateCache;
+      } else {
+        const st = window.__INITIAL_STATE__ || {};
+        const vd = st.videoData || null;
+        if (vd && Array.isArray(vd.pages) && vd.pages.length) {
+          src = { bvid: vd.bvid || '', title: vd.title || '', pages: vd.pages };
+        }
+      }
+    } catch (e) {
+      src = null;
+    }
+    if (!src) return { pages: [], title: '', ok: false };
+
+    // 校验是不是当前这个视频（SPA 切换时分P状态可能还是上一个视频的）
+    const bv = String(src.bvid || '').toLowerCase();
+    const want = String(expectedId || '').toLowerCase();
+    let mine = true;
+    if (bv && want) {
+      mine = want.startsWith('av') ? true : bv === want;
+    }
+    const pages = normalizePages({ pages: src.pages });
+    if (mine && pages.length) {
+      return { pages, title: src.title || '', ok: true };
+    }
+    return { pages: [], title: '', ok: false };
+  }
+
   async function getVideoInfo(id) {
     if (infoCache.id === id && infoCache.info) return infoCache.info;
-    const raw = await fetchVideoInfo(id);
-    if (!raw) return null;
+
+    // 两条来源：页面状态 + 接口，谁的分P更全用谁
+    const state = pagesFromState(id);
+    let raw = await fetchVideoInfo(id);
+    // 接口被风控（-412 等）时稍等重试一次，风控常常是瞬时的
+    if (!raw && !state.pages.length) {
+      await sleep(800);
+      raw = await fetchVideoInfo(id);
+    }
+    const apiPages = raw ? normalizePages(raw) : [];
+    const pages = state.pages.length >= apiPages.length ? state.pages : apiPages;
+    if (!pages.length) return null;
+
     const info = {
-      title: raw.title || '',
-      bvid: raw.bvid || '',
-      pages: normalizePages(raw),
+      title: (raw && raw.title) || state.title || (pageStateCache && pageStateCache.title) || '',
+      bvid: (raw && raw.bvid) || (pageStateCache && pageStateCache.bvid) || '',
+      pages,
+      from: state.pages.length >= apiPages.length ? 'state' : 'api',
     };
     infoCache = { id, info };
     return info;
@@ -495,24 +585,46 @@
     const meta = { prefix, part };
     const groupId = `bili:${id}:${cid}`;
     const idParam = /^BV/i.test(id) ? `bvid=${id}` : `aid=${String(id).replace(/^av/i, '')}`;
+    const playUrlBase = `https://api.bilibili.com/x/player/playurl?${idParam}&cid=${cid}`;
 
-    const apiUrl =
-      `https://api.bilibili.com/x/player/playurl?${idParam}&cid=${cid}` +
-      `&qn=${qn}&fnval=1&fnver=0&fourk=1&platform=pc`;
-    const apiUrlH5 =
-      `https://api.bilibili.com/x/player/playurl?${idParam}&cid=${cid}` +
-      `&qn=${qn}&type=mp4&otype=json&fnver=0&fnval=0&fourk=1&platform=html5&high_quality=1`;
-    const apiUrlDash =
-      `https://api.bilibili.com/x/player/playurl?${idParam}&cid=${cid}` +
-      `&qn=80&fnval=16&fnver=0&fourk=1&platform=pc`;
+    const mkH5 = (q) =>
+      `${playUrlBase}&qn=${q}&type=mp4&otype=json&fnver=0&fnval=0&fourk=1&platform=html5&high_quality=1`;
+    const mkPc = (q) => `${playUrlBase}&qn=${q}&fnval=1&fnver=0&fourk=1&platform=pc`;
+    const apiUrlDash = `${playUrlBase}&qn=80&fnval=16&fnver=0&fourk=1&platform=pc`;
+
+    // 画质降级链：目标画质拿不到时依次降到 720P / 480P（有些分P 只开放低清）
+    const qnChain = [qn, 64, 32].filter((v, i, a) => a.indexOf(v) === i);
+    let added = 0;
+    let lastCode = 0;
+    let lastMsg = '';
 
     // 方案一：bilibili-parse 的 html5 接口（免 Referer，VRChat 首选）
-    const h5Data = await resolvePlayurl(apiUrlH5);
-    if (h5Data) await recordDurlSet(h5Data, groupId, 'h5', meta);
+    let h5Data = null;
+    for (const q of qnChain) {
+      const r = await resolvePlayurlFull(mkH5(q));
+      lastCode = r.code;
+      lastMsg = r.msg;
+      if (r.data) {
+        h5Data = r.data;
+        added += await recordDurlSet(r.data, groupId, 'h5', meta);
+        break;
+      }
+      // -412 是 B 站风控，稍等一下再降级重试
+      if (r.code === -412) await sleep(900);
+    }
 
     // 方案二：普通网页接口（多 CDN 节点 / 更高画质）
-    const pcData = await resolvePlayurl(apiUrl);
-    if (pcData) await recordDurlSet(pcData, groupId, 'pc', meta);
+    let pcData = null;
+    {
+      const r = await resolvePlayurlFull(mkPc(qn));
+      if (r.data) {
+        pcData = r.data;
+        added += await recordDurlSet(r.data, groupId, 'pc', meta);
+      } else if (!lastCode && r.code) {
+        lastCode = r.code;
+        lastMsg = r.msg;
+      }
+    }
 
     // 方案三：本机两种接口都拿不到直链时，兜底请求公共解析服务
     if (!h5Data && !pcData) {
@@ -521,6 +633,7 @@
       );
       if (pub) {
         const q = QN_LABEL[pub.quality] || `画质 ${pub.quality}`;
+        added += 1;
         await recordBili(
           toHttps(pub.url),
           'video/mp4',
@@ -538,9 +651,11 @@
     const bestQn = Math.max(h5Data ? h5Data.quality || 0 : 0, pcData ? pcData.quality || 0 : 0);
     if (bestQn < qn) {
       const dashData = await resolvePlayurl(apiUrlDash);
-      if (dashData && dashData.dash) await recordDashSet(dashData, `${groupId}:dash`, meta);
+      if (dashData && dashData.dash) {
+        added += await recordDashSet(dashData, `${groupId}:dash`, meta);
+      }
     }
-    return !!(h5Data || pcData);
+    return { ok: added > 0, added, code: lastCode, msg: lastMsg };
   }
 
   // 解析番剧 / 影视（ep）
@@ -597,6 +712,7 @@
     if (vm) {
       // 普通投稿（可能多 P）
       const id = vm[1];
+      await waitState(1000);
       const info = await getVideoInfo(id);
       const pages = (info && info.pages) || [];
       const cidState = cidFromState();
@@ -606,7 +722,27 @@
         pages.find((p) => String(p.cid) === String(cidState)) ||
         null;
       const cid = (target && target.cid) || cidState;
-      if (!cid) return;
+      if (!cid) {
+        // 两条来源都拿不到 cid（接口被风控 + 主世界状态没转发过来）：
+        // 用公共解析服务按「BV 号 + 分P 序号」兜底，至少能拿到当前这一 P
+        const pub = await publicParse(
+          /^BV/i.test(id) ? { bvid: id, page: pageState } : { aid: id, page: pageState }
+        );
+        if (pub) {
+          const q = QN_LABEL[pub.quality] || `画质 ${pub.quality}`;
+          await recordBili(
+            toHttps(pub.url),
+            'video/mp4',
+            'bilibili-api',
+            `${pageState > 1 ? `P${pageState} · ` : ''}${q} · 公共解析`,
+            deadlineOf(pub.url),
+            `bili:${id}:p${pageState}`,
+            '公共解析服务',
+            ''
+          );
+        }
+        return;
+      }
       const current = (target && target.page) || pageState;
       lastCtx = { id, title: (info && info.title) || '', pages, current };
       if (pages.length > 1) {
@@ -662,19 +798,25 @@
         ? { title: lastCtx.title, pages: lastCtx.pages }
         : await getVideoInfo(id);
     const pages = (info && info.pages) || [];
+    // 注意：先按页码匹配，再按 cid 匹配；两者都没有时直接用传入的 cid（保证还能解析）
     const hit =
       pages.find((x) => x.page === pageNo) ||
       (cidHint ? pages.find((x) => String(x.cid) === String(cidHint)) : null) ||
       (cidHint ? { cid: cidHint, page: pageNo || 1, part: '' } : null);
-    if (!hit || !hit.cid) throw new Error('没找到该分P（可能已删除或接口繁忙）');
-    await parseVideoPart({
+    if (!hit || !hit.cid) throw new Error('没找到该分P（可能已删除，或分P列表还没加载好，刷新页面再试）');
+    const res = await parseVideoPart({
       id,
       cid: hit.cid,
       page: hit.page || pageNo || 1,
       part: hit.part || '',
       total: pages.length || 1,
     });
-    return true;
+    if (!res || !res.ok) {
+      let reason = 'B 站接口没有返回可播放直链';
+      if (res && res.code) reason += `（code=${res.code}${res.msg ? ' ' + res.msg : ''}）`;
+      throw new Error(reason);
+    }
+    return res;
   }
 
   // ---------- 直播解析 ----------
@@ -857,9 +999,9 @@
       if (!isTop) return;
       (async () => {
         try {
-          await parsePartByPage(parseInt(msg.page, 10) || 1, msg.cid || '');
+          const res = await parsePartByPage(parseInt(msg.page, 10) || 1, msg.cid || '');
           try {
-            sendResponse({ ok: true });
+            sendResponse({ ok: true, added: (res && res.added) || 0 });
           } catch (e) {}
         } catch (e) {
           try {

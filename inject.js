@@ -153,6 +153,9 @@
         } catch (e) {
           // ignore
         }
+        // 切页后页面状态可能变了，补发一次
+        setTimeout(publishState, 60);
+        setTimeout(publishState, 600);
         return r;
       };
     safeWrap(window.history, 'pushState', historyWrap);
@@ -161,10 +164,54 @@
     try {
       window.addEventListener('popstate', () => {
         post({ type: 'NAVIGATE', href: location.href });
+        setTimeout(publishState, 60);
       });
     } catch (e) {
       // ignore
     }
+
+    // ---------- 把页面状态里的分P信息转交给隔离世界 ----------
+    // 关键：隔离世界（content.js）读不到页面自定义的 JS 变量，
+    // 必须由主世界读 window.__INITIAL_STATE__ 后再 postMessage 出去。
+    // 没有这一步，分P解析只能退回到「接口返回的默认分P」，永远解析到 P1。
+    function publishState() {
+      try {
+        const st = window.__INITIAL_STATE__ || null;
+        if (!st) return false;
+        const vd = st.videoData || null;
+        if (!vd) return false;
+        const pages = Array.isArray(vd.pages)
+          ? vd.pages.map((p) => ({
+              cid: p.cid,
+              page: p.page,
+              part: String(p.part || ''),
+              duration: p.duration || 0,
+            }))
+          : [];
+        post({
+          type: 'STATE',
+          href: location.href,
+          p: st.p || 0,
+          bvid: vd.bvid || '',
+          aid: vd.aid || 0,
+          cid: vd.cid || 0,
+          title: vd.title || '',
+          pages,
+        });
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    // 页面状态由 B 站的内联脚本写入，document_start 时可能还没有，多重试几次
+    [0, 300, 900, 1800, 3000].forEach((ms) => {
+      try {
+        setTimeout(publishState, ms);
+      } catch (e) {
+        // ignore
+      }
+    });
   } catch (e) {
     // 兜底：任何意外都不向外抛出，避免被记为扩展错误
   }

@@ -31,11 +31,11 @@ let pagesInfo = null;
 let parsingPages = false;
 
 // ---------- 工具 ----------
-function toast(text) {
+function toast(text, ms) {
   toastEl.textContent = text;
   toastEl.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1600);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms || 1600);
 }
 
 function escapeHtml(s) {
@@ -508,15 +508,25 @@ async function refreshPages() {
   renderPagesPanel();
 }
 
-function markPageDone(pageNo) {
-  const btn = pagesPanelEl.querySelector(`.page-btn[data-page="${pageNo}"]`);
-  if (!btn) return;
-  btn.textContent = '✓ 已解析';
-  btn.classList.add('done');
-  btn.disabled = true;
+// 从已解析结果里挑出属于某个分P的最佳链接（免 Referer 主链优先）
+function pickBestForPage(page) {
+  const cid = String(page.cid || '');
+  const part = String(page.part || '');
+  const pool = videos.filter((v) => {
+    const g = String(v.group || '');
+    if (cid && g && g.split(':').indexOf(cid) >= 0) return true;
+    if (part && v.part && String(v.part) === part) return true;
+    return false;
+  });
+  if (!pool.length) return null;
+  const playable = pool.filter((v) => analyze(v).level === 1);
+  const list = (playable.length ? playable : pool).slice();
+  list.sort((a, b) => nodePriority(a) - nodePriority(b) || b.time - a.time);
+  return list[0] || null;
 }
 
-async function parseOnePage(page) {
+async function parseOnePage(page, opts) {
+  const o = opts || {};
   const btn = pagesPanelEl.querySelector(`.page-btn[data-page="${page.page}"]`);
   if (btn) {
     btn.disabled = true;
@@ -532,19 +542,39 @@ async function parseOnePage(page) {
   } catch (e) {
     resp = null;
   }
-  if (!resp || !resp.ok) {
+  if (!resp || !resp.ok || !resp.added) {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = '解析';
+      btn.textContent = '重试';
     }
-    toast('该分P解析失败：' + ((resp && resp.error) || '页面无响应，请刷新页面后重试'));
-    return false;
+    const why =
+      (resp && resp.error) ||
+      (resp && resp.ok === false ? '解析失败' : '页面无响应，请刷新页面后重试');
+    if (!o.silent) toast(`P${page.page} 解析失败：${why}`, 4200);
+    return { ok: false, error: why };
   }
-  markPageDone(page.page);
+
   await sleep(250);
   await getVideos();
   render();
-  return true;
+
+  // 合成一步：解析成功后直接把最佳链接放进剪贴板
+  let copied = '';
+  if (o.copy !== false) {
+    const best = pickBestForPage(page);
+    if (best && (await copyText(best.url))) copied = best.quality || '';
+  }
+
+  if (btn) {
+    btn.textContent = copied ? '✓ 已复制' : '✓ 已解析';
+    btn.classList.add('done');
+    btn.disabled = true;
+  }
+  if (!o.silent) {
+    if (copied) toast(`P${page.page} 已复制：${copied}（直接粘进 VRChat 即可）`, 3000);
+    else toast(`P${page.page} 已解析，结果在下方列表`, 2600);
+  }
+  return { ok: true, added: resp.added, copied };
 }
 
 async function parseAllPages() {
@@ -559,24 +589,34 @@ async function parseAllPages() {
     allBtn.textContent = '解析中…';
   }
   let done = 0;
+  const fails = [];
   for (let i = 0; i < limit; i++) {
     const page = list[i];
     const btn = pagesPanelEl.querySelector(`.page-btn[data-page="${page.page}"]`);
     if (btn && !btn.classList.contains('done')) {
       btn.textContent = `解析中 ${i + 1}/${limit}`;
     }
-    if (await parseOnePage(page)) done += 1;
+    const r = await parseOnePage(page, { silent: true, copy: false });
+    if (r.ok) done += 1;
+    else fails.push(`P${page.page}（${r.error}）`);
     await sleep(300);
   }
   parsingPages = false;
   if (allBtn) {
     allBtn.disabled = false;
-    allBtn.textContent = `⚡ 解析全部分P（最多 20 个）`;
+    allBtn.textContent = '⚡ 解析全部分P（最多 20 个）';
   }
-  toast(
-    `已解析 ${done}/${limit} 个分P` +
-      (list.length > limit ? '（分P超过 20 个，只解析了前 20）' : '')
-  );
+  if (fails.length) {
+    toast(
+      `成功 ${done}/${limit}，失败 ${fails.length} 个：${fails.slice(0, 2).join('；')}` +
+        (fails.length > 2 ? ' …' : ''),
+      5200
+    );
+  } else {
+    toast(
+      `全部分P已解析：${done}/${limit}` + (list.length > limit ? '（只处理前 20 个）' : '')
+    );
+  }
 }
 
 function renderPagesPanel() {
@@ -617,11 +657,11 @@ function renderPagesPanel() {
     const btn = document.createElement('button');
     btn.className = 'page-btn';
     btn.dataset.page = String(p.page);
-    btn.textContent = '解析';
-    btn.title = '解析这个分P，结果会出现在下方列表';
+    btn.textContent = '解析+复制';
+    btn.title = '解析这个分P，解析成功后自动把最佳链接复制到剪贴板';
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      await parseOnePage(p);
+      await parseOnePage(p, { copy: true });
     });
     row.appendChild(idx);
     row.appendChild(name);
@@ -1057,6 +1097,19 @@ function buildDiagnostics() {
   lines.push(`时间: ${new Date().toLocaleString('zh-CN')}`);
   const groups = buildGroups();
   lines.push(`检测结果: ${videos.length} 条原始记录，${groups.length} 个视频`);
+  if (pagesInfo && pagesInfo.pages) {
+    lines.push(`分P: 共 ${pagesInfo.pages.length} 个，当前 P${pagesInfo.current}，标题=${pagesInfo.title || '-'}`);
+    lines.push(
+      '分P明细: ' +
+        pagesInfo.pages
+          .slice(0, 8)
+          .map((p) => `P${p.page}(cid=${p.cid})`)
+          .join(' ') +
+        (pagesInfo.pages.length > 8 ? ' …' : '')
+    );
+  } else {
+    lines.push('分P: 无（单P视频，或分P信息没取到）');
+  }
   groups.forEach((g, i) => {
     const v = g[0];
     const a = analyze(v);

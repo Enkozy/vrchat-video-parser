@@ -4,7 +4,7 @@
 >
 > 作者 / 维护者：**知音illya**
 
-![version](https://img.shields.io/badge/version-2.0.0-blue)
+![version](https://img.shields.io/badge/version-2.0.1-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/platform-Edge%20111%2B-lightgrey)
 
@@ -56,7 +56,7 @@ git clone https://github.com/Enkozy/vrchat-video-parser.git
 
 ### 方式三：使用发布包
 
-直接下载：[VRChat-Video-Parser-v2.0.0.zip](https://github.com/Enkozy/vrchat-video-parser/releases/download/v2.0.0/VRChat-Video-Parser-v2.0.0.zip)
+直接下载：[VRChat-Video-Parser-v2.0.1.zip](https://github.com/Enkozy/vrchat-video-parser/releases/download/v2.0.1/VRChat-Video-Parser-v2.0.1.zip)
 （整合包含插件本体、一键合并工具与图文说明；也可以在 [Releases](../../releases) 页面查看全部版本）
 
 ## 🎮 使用方法
@@ -73,8 +73,8 @@ git clone https://github.com/Enkozy/vrchat-video-parser.git
 打开 B 站多 P 视频页后，弹窗顶部会出现 **分P 面板**：
 
 1. 面板列出 `P1 / P2 / P3…` 的标题与时长，**当前播放的那一 P 高亮**
-2. 点某一行的 **「解析」** → 只解析这一 P，结果带 `P2 · 1080P 高清` 标记
-3. 点 **「⚡ 解析全部分P」** → 依次解析（最多 20 个，够用且不容易触发风控）
+2. 点某一行的 **「解析+复制」** → 解析这一 P，**成功后自动把最佳链接放进剪贴板**（直接粘进 VRChat 即可），结果同时出现在下方列表并带 `P2 · 1080P 高清` 标记
+3. 点 **「⚡ 解析全部分P」** → 依次解析（最多 20 个，够用且不容易触发风控），批量不会抢剪贴板
 
 > 每个分P 的直链彼此独立：复制哪一条就播哪一 P，`P1` 与 `P2` 的链接不能互换。
 

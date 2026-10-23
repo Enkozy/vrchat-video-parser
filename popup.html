@@ -6,51 +6,102 @@
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
-  <div class="bg" aria-hidden="true">
-    <div class="blob b1"></div>
-    <div class="blob b2"></div>
-    <div class="blob b3"></div>
-  </div>
   <div class="app">
-  <header>
-    <div class="logo"><span class="play">▶</span> VRChat 视频解析器</div>
-    <div class="hdr-actions">
-      <button id="btnScan" class="btn small" title="重新扫描当前页面">🔄 扫描</button>
-      <button id="btnClear" class="btn small" title="清空本页记录">🗑 清空</button>
+    <div class="bg" aria-hidden="true">
+      <div class="bg-img" id="bgImg"></div>
+      <div class="bg-dim"></div>
+      <div class="blob b1"></div>
+      <div class="blob b2"></div>
+      <div class="blob b3"></div>
     </div>
-  </header>
 
-  <div id="pageCard"></div>
-  <div id="liveBanner"></div>
-  <div id="pagesPanel"></div>
+    <header>
+      <div class="logo"><span class="play">▶</span> VRChat 视频解析器</div>
+      <div class="hdr-actions">
+        <button id="btnBg" class="btn small icon" title="外观设置：背景图 / 裁切 / 模糊">⚙</button>
+        <button id="btnScan" class="btn small" title="重新扫描当前页面">🔄 扫描</button>
+        <button id="btnClear" class="btn small" title="清空本页记录">🗑 清空</button>
+      </div>
+    </header>
 
-  <div class="toolbar">
-    <button id="btnCopyBest" class="btn primary">📋 复制首选可用链接</button>
-    <label class="show-all"><input type="checkbox" id="chkAll" /> 显示全部结果</label>
+
+    <div id="bgPanel" class="bgpanel" hidden>
+      <div class="bgp-head">
+        <span class="bgp-title">🖼 外观设置</span>
+        <button id="btnBgClose" class="bgp-x" title="关闭">✕</button>
+      </div>
+      <div class="bgp-row">
+        <label class="bgp-label">背景图片</label>
+        <div class="bgp-actions">
+          <button id="btnBgPick" class="btn small">选择图片…</button>
+          <button id="btnBgRemove" class="btn small">移除</button>
+          <input type="file" id="bgFile" accept="image/*" hidden />
+        </div>
+      </div>
+
+      <div class="bgp-row">
+        <label class="bgp-label">裁切 / 定位</label>
+        <div class="crop" id="bgCrop" title="在方块里拖动，调整取景位置">
+          <div class="crop-img" id="bgCropImg"></div>
+          <span class="crop-hint">拖动取景</span>
+        </div>
+      </div>
+      <div class="bgp-row">
+        <label class="bgp-label" for="bgScale">缩放 <b id="bgScaleVal">100%</b></label>
+        <input type="range" id="bgScale" min="100" max="250" step="5" value="100" class="rng" />
+      </div>
+      <div class="bgp-row">
+        <label class="bgp-label" for="bgBlur">模糊 <b id="bgBlurVal">8px</b></label>
+        <input type="range" id="bgBlur" min="0" max="40" step="1" value="8" class="rng" />
+      </div>
+      <div class="bgp-row">
+        <label class="bgp-label" for="bgDim">压暗 <b id="bgDimVal">45%</b></label>
+        <input type="range" id="bgDim" min="0" max="90" step="1" value="45" class="rng" />
+      </div>
+      <div class="bgp-tip">拖动小方块取景，滑杆调缩放/模糊/压暗；图片只存在本机，不上传。</div>
+    </div>
+
+    <div class="scroll">
+      <div id="pageCard"></div>
+      <div id="liveBanner"></div>
+      <div id="pagesPanel"></div>
+
+      <div class="toolbar">
+        <button id="btnCopyBest" class="btn primary">📋 复制首选可用链接</button>
+        <div class="toolbar-row">
+          <label class="show-all"><input type="checkbox" id="chkAll" /> 显示全部结果</label>
+          <span id="stat" class="stat"></span>
+        </div>
+      </div>
+
+      <div id="hlsBanner"></div>
+      <div id="dashBanner"></div>
+
+      <ul id="list"></ul>
+
+      <div id="empty">
+        <div class="empty-icon">🎬</div>
+        <div>暂无检测到的视频</div>
+        <div class="empty-tip">打开视频页面并<b>播放视频</b>，然后点击「🔄 扫描」。</div>
+        <div class="empty-tip2">若刚安装插件，请先刷新视频页面再试。</div>
+      </div>
+    </div>
+
+    <footer>
+      <div class="ftr-row">
+        <span class="chip"><i class="dot ok"></i>MP4 可播</span>
+        <span class="chip" title="M3U8 / M4S / FLV —— VRChat 不支持，需转换或转推"><i class="dot warn"></i>需转换</span>
+        <span class="credit ver"><span id="ver">v2.3.2</span><i class="sep">·</i>知音illya</span>
+      </div>
+      <div class="ftr-row">
+        <button id="btnDiag" class="btn small diag">🩺 复制诊断信息</button>
+        <span class="credit qq" id="qqGroup" title="点击复制群号">QQ 群 1130646085</span>
+      </div>
+    </footer>
+
+    <div id="toast"></div>
   </div>
 
-  <div id="hlsBanner"></div>
-  <div id="dashBanner"></div>
-
-  <ul id="list"></ul>
-  <div id="empty">
-    <div class="empty-icon">🎬</div>
-    <div>暂无检测到的视频</div>
-    <div class="empty-tip">打开视频页面并<b>播放视频</b>，然后点击「🔄 扫描」。</div>
-    <div class="empty-tip2">若刚安装插件，请先刷新视频页面再试。</div>
-  </div>
-
-  <footer>
-    <div class="f-row"><span class="dot ok"></span> MP4 / WebM —— VRChat 可直接播放</div>
-    <div class="f-row"><span class="dot warn"></span> M3U8 / M4S / FLV —— VRChat 不支持，需转换或转推</div>
-    <div class="f-row tiny">部分网站校验 Referer，直链可能无法在 VRChat 中播放。</div>
-    <button id="btnDiag" class="btn small diag">🩺 复制诊断信息（反馈问题时附上）</button>
-    <div class="f-row credit">VRChat 视频解析器 <span id="ver">v2.0.1</span> · 作者：知音illya</div>
-    <div class="f-row credit qq" id="qqGroup" title="点击复制群号">QQ 交流群：1130646085</div>
-  </footer>
-
-  <div id="toast"></div>
-  </div>
   <script src="popup.js"></script>
 </body>
 </html>

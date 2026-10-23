@@ -96,6 +96,240 @@ async function copyText(text) {
   }
 }
 
+// ---------- 外观：自定义背景图（裁切 / 缩放 / 模糊 / 压暗，只存本地） ----------
+const bgState = { image: '', blur: 8, dim: 45, scale: 100, posX: 50, posY: 50 };
+
+const clampNum = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+function applyBg() {
+  const root = document.documentElement;
+  root.style.setProperty('--bg-blur', bgState.blur + 'px');
+  root.style.setProperty('--bg-dim', String(bgState.dim / 100));
+  root.style.setProperty('--bg-zoom', String(bgState.scale / 100));
+  root.style.setProperty('--bg-pos', `${bgState.posX}% ${bgState.posY}%`);
+
+  const url = bgState.image ? `url("${bgState.image}")` : '';
+  const layer = $('bgImg');
+  if (layer) layer.style.backgroundImage = url;
+  const cropImg = $('bgCropImg');
+  if (cropImg) cropImg.style.backgroundImage = url;
+  document.body.classList.toggle('has-bg', !!bgState.image);
+
+  const setVal = (id, v) => {
+    const el = $(id);
+    if (el) el.value = String(v);
+  };
+  setVal('bgBlur', bgState.blur);
+  setVal('bgDim', bgState.dim);
+  setVal('bgScale', bgState.scale);
+  const setTxt = (id, t) => {
+    const el = $(id);
+    if (el) el.textContent = t;
+  };
+  setTxt('bgBlurVal', bgState.blur + 'px');
+  setTxt('bgDimVal', bgState.dim + '%');
+  setTxt('bgScaleVal', bgState.scale + '%');
+}
+
+async function saveBg() {
+  try {
+    await chrome.storage.local.set({
+      bgImage: bgState.image,
+      bgBlur: bgState.blur,
+      bgDim: bgState.dim,
+      bgScale: bgState.scale,
+      bgPosX: bgState.posX,
+      bgPosY: bgState.posY,
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function loadBg() {
+  try {
+    const r = await chrome.storage.local.get([
+      'bgImage',
+      'bgBlur',
+      'bgDim',
+      'bgScale',
+      'bgPosX',
+      'bgPosY',
+    ]);
+    if (r) {
+      if (typeof r.bgImage === 'string') bgState.image = r.bgImage;
+      const b = parseInt(r.bgBlur, 10);
+      const d = parseInt(r.bgDim, 10);
+      const s = parseInt(r.bgScale, 10);
+      const px = parseInt(r.bgPosX, 10);
+      const py = parseInt(r.bgPosY, 10);
+      if (Number.isFinite(b)) bgState.blur = clampNum(b, 0, 40);
+      if (Number.isFinite(d)) bgState.dim = clampNum(d, 0, 90);
+      if (Number.isFinite(s)) bgState.scale = clampNum(s, 100, 250);
+      if (Number.isFinite(px)) bgState.posX = clampNum(px, 0, 100);
+      if (Number.isFinite(py)) bgState.posY = clampNum(py, 0, 100);
+    }
+  } catch (e) {
+    // 读不到就用默认值
+  }
+  applyBg();
+}
+
+// 图片压缩：最长边 1600px 的 JPEG，够当背景，存储也不会撑爆配额
+function fileToBgDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('读取图片失败'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('这个文件不是能识别的图片'));
+      img.onload = () => {
+        try {
+          const max = 1600;
+          let w = img.width || 1;
+          let h = img.height || 1;
+          if (w > max || h > max) {
+            const s = Math.min(max / w, max / h);
+            w = Math.round(w * s);
+            h = Math.round(h * s);
+          }
+          const cv = document.createElement('canvas');
+          cv.width = w;
+          cv.height = h;
+          const ctx = cv.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(cv.toDataURL('image/jpeg', 0.82));
+        } catch (e) {
+          resolve(String(reader.result || ''));
+        }
+      };
+      img.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function initBgSettings() {
+  const btnBg = $('btnBg');
+  const panel = $('bgPanel');
+  const file = $('bgFile');
+  if (!btnBg || !panel) return;
+
+  const openPanel = (open) => {
+    panel.hidden = !open;
+    btnBg.classList.toggle('active', open);
+  };
+
+  btnBg.addEventListener('click', () => openPanel(panel.hidden));
+  const closeBtn = $('btnBgClose');
+  if (closeBtn) closeBtn.addEventListener('click', () => openPanel(false));
+
+  const pick = $('btnBgPick');
+  if (pick && file) {
+    pick.addEventListener('click', () => file.click());
+    file.addEventListener('change', async () => {
+      const f = file.files && file.files[0];
+      if (!f) return;
+      try {
+        toast('正在处理图片…', 1200);
+        bgState.image = await fileToBgDataUrl(f);
+        applyBg();
+        const ok = await saveBg();
+        toast(ok ? '背景图已应用 ✓' : '图片太大，保存失败（换张小一点的）', ok ? 1800 : 4200);
+      } catch (e) {
+        toast(String((e && e.message) || '设置背景失败'), 3200);
+      } finally {
+        try {
+          file.value = '';
+        } catch (e) {}
+      }
+    });
+  }
+
+  const rm = $('btnBgRemove');
+  if (rm) {
+    rm.addEventListener('click', async () => {
+      bgState.image = '';
+      applyBg();
+      await saveBg();
+      toast('已移除背景图');
+    });
+  }
+
+  const blurEl = $('bgBlur');
+  if (blurEl) {
+    blurEl.addEventListener('input', () => {
+      bgState.blur = parseInt(blurEl.value, 10) || 0;
+      applyBg();
+    });
+    blurEl.addEventListener('change', () => {
+      saveBg();
+    });
+  }
+
+  const dimEl = $('bgDim');
+  if (dimEl) {
+    dimEl.addEventListener('input', () => {
+      bgState.dim = parseInt(dimEl.value, 10) || 0;
+      applyBg();
+    });
+    dimEl.addEventListener('change', () => {
+      saveBg();
+    });
+  }
+
+  const scaleEl = $('bgScale');
+  if (scaleEl) {
+    scaleEl.addEventListener('input', () => {
+      bgState.scale = clampNum(parseInt(scaleEl.value, 10) || 100, 100, 250);
+      applyBg();
+    });
+    scaleEl.addEventListener('change', () => {
+      saveBg();
+    });
+  }
+
+  // 裁切：在小方块里拖动 = 调整取景位置（背景 background-position）
+  const crop = $('bgCrop');
+  if (crop) {
+    let drag = null;
+    crop.addEventListener('pointerdown', (e) => {
+      if (!bgState.image) {
+        toast('先选一张背景图，再来拖取景');
+        return;
+      }
+      const rect = crop.getBoundingClientRect();
+      drag = {
+        x: e.clientX,
+        y: e.clientY,
+        px: bgState.posX,
+        py: bgState.posY,
+        w: Math.max(1, rect.width),
+        h: Math.max(1, rect.height),
+      };
+      try {
+        crop.setPointerCapture(e.pointerId);
+      } catch (err) {}
+    });
+    crop.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const dx = ((e.clientX - drag.x) / drag.w) * 100;
+      const dy = ((e.clientY - drag.y) / drag.h) * 100;
+      bgState.posX = clampNum(drag.px - dx * 1.6, 0, 100);
+      bgState.posY = clampNum(drag.py - dy * 1.6, 0, 100);
+      applyBg();
+    });
+    const endDrag = () => {
+      if (!drag) return;
+      drag = null;
+      saveBg();
+    };
+    crop.addEventListener('pointerup', endDrag);
+    crop.addEventListener('pointercancel', endDrag);
+  }
+}
+
 // ---------- 格式分析 ----------
 const EXT_RE = /\.(mp4|webm|m3u8|m4s|ts|mkv|flv|mov|ogv)(\?|#|$)/i;
 
@@ -743,6 +977,14 @@ function render() {
       });
   const rows = flat.sort((x, y) => x.a.level - y.a.level || y.v.time - x.v.time);
 
+  // 工具条右侧的统计（纯展示，取不到元素就跳过，不影响功能）
+  const statEl = $('stat');
+  if (statEl) {
+    statEl.textContent = videos.length
+      ? `${videos.length} 条记录 · ${groups.length} 个视频`
+      : '';
+  }
+
   renderLiveBanner(groups);
   renderHlsBanner(groups);
   renderDashBanner(groups);
@@ -782,7 +1024,7 @@ function render() {
         ? `<span class="badge qn">${escapeHtml(showAll && v.node ? `${v.quality} · ${v.node}` : v.quality)}</span>`
         : '') +
       (alts ? `<span class="badge nodes">${alts.length} 个节点</span>` : '') +
-      `<span class="note">${a.note}</span>`;
+      (a.note && a.note !== '可用于 VRChat' ? `<span class="note">${a.note}</span>` : '');
 
     const urlDiv = document.createElement('div');
     urlDiv.className = 'row-url';
@@ -1085,6 +1327,20 @@ function renderPageCard(url) {
       '解析完成后顶部会出现提示，点「<b>⚙️ 复制 1080P 合并命令</b>」用 ffmpeg 合并成 MP4 即可。';
     card.appendChild(q1080El);
 
+    // 把冗长的说明收进「高级设置」，让首屏保持清爽（内容一字不少，展开即可看到）
+    const adv = document.createElement('details');
+    adv.className = 'adv';
+    const advSum = document.createElement('summary');
+    advSum.innerHTML = '⚙️ 高级设置<span class="adv-sub">画质 · 登录状态 · 1080P</span>';
+    adv.appendChild(advSum);
+    const advBody = document.createElement('div');
+    advBody.className = 'adv-body';
+    [tip, qnRow, loginEl, q1080El].forEach((node) => {
+      if (node) advBody.appendChild(node);
+    });
+    adv.appendChild(advBody);
+    card.appendChild(adv);
+
     pageCardEl.appendChild(card);
   }
 }
@@ -1190,6 +1446,14 @@ async function scanPage() {
   tabUrl = (tab && tab.url) || '';
 
   renderPageCard(tabUrl);
+
+  // 外观设置（自定义背景图 / 裁切 / 模糊 / 压暗）
+  try {
+    initBgSettings();
+    await loadBg();
+  } catch (e) {
+    // 外观不影响主流程
+  }
 
   // 版本号与 manifest 保持一致
   try {

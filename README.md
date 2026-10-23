@@ -4,7 +4,7 @@
 >
 > 作者 / 维护者：**知音illya**
 
-![version](https://img.shields.io/badge/version-2.0.1-blue)
+![version](https://img.shields.io/badge/version-2.1.0-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/platform-Edge%20111%2B-lightgrey)
 
@@ -21,6 +21,8 @@
 - 🔁 **中转服务**：可配置自建 Cloudflare Worker（如 bili-resolver）作为 B 站解析源，彻底绕开 Referer 403
 - 🎬 **HLS 站点支持**：动漫站等 m3u8 站点会给出 ffmpeg 合并命令，转成 MP4 后即可分享给所有人
 - 🌫 **毛玻璃 UI**：极光动态背景、列表错峰入场、复制脉冲、扫描转圈等动画
+- 🖼 **自定义外观**：可换自己的背景图，支持拖动裁切、缩放、模糊、压暗，图片只存本机
+- ⬆ **版本提示**：打开弹窗时检查 GitHub 最新 Release，有新版本会在顶部提示并可跳转下载
 - 🔒 **纯本地运行**：无任何服务器，不收集、不上传任何数据
 - 📚 **B 站分P 解析**（v2.0.0 新增）：多 P 视频会在顶部列出**全部分P**（标题 + 时长），可单独解析某一 P，也可「⚡ 解析全部分P」批量出链接，每条结果都带 `P2 · 标题` 标记
 - 🔴 **直播解析**（v2.0.0 新增）：B 站直播走官方接口（免登录拿原画 FLV）；斗鱼 / 虎牙 / 抖音 / 快手 / Twitch 用「网络嗅探 + 页面源码抓取」拿到直播流，并给出**转推 / 录制**命令
@@ -35,6 +37,10 @@
 | --- | --- | --- |
 | _待补充_ | _待补充_ | _待补充_ |
 
+## 🏪 Edge 加载项商店
+
+提交材料（包 + 图标 + 截图 + 文案 + 隐私政策 + 权限说明）都在 [`store/`](store/) 目录，
+按 [`store/listing.md`](store/listing.md) 里的步骤到 Partner Center 提交即可。
 ## 📦 安装
 
 要求：**Windows 版 Microsoft Edge 111 或更高版本**

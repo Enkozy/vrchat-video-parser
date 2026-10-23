@@ -4,7 +4,7 @@
 >
 > 作者 / 维护者：**知音illya**
 
-![version](https://img.shields.io/badge/version-2.1.0-blue)
+![version](https://img.shields.io/badge/version-2.3.2-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/platform-Edge%20111%2B-lightgrey)
 
@@ -41,6 +41,10 @@
 
 提交材料（包 + 图标 + 截图 + 文案 + 隐私政策 + 权限说明）都在 [`store/`](store/) 目录，
 按 [`store/listing.md`](store/listing.md) 里的步骤到 Partner Center 提交即可。
+> 🏪 Edge 加载项商店：正在认证中，上架后这里会更新商店链接。
+>
+> 现在可以先用下面的方式本地加载。
+
 ## 📦 安装
 
 要求：**Windows 版 Microsoft Edge 111 或更高版本**
@@ -62,7 +66,7 @@ git clone https://github.com/Enkozy/vrchat-video-parser.git
 
 ### 方式三：使用发布包
 
-直接下载：[VRChat-Video-Parser-v2.0.1.zip](https://github.com/Enkozy/vrchat-video-parser/releases/download/v2.0.1/VRChat-Video-Parser-v2.0.1.zip)
+直接下载：[VRChat-Video-Parser-v2.3.2.zip](https://github.com/Enkozy/vrchat-video-parser/releases/download/v2.3.2/VRChat-Video-Parser-v2.3.2.zip)
 （整合包含插件本体、一键合并工具与图文说明；也可以在 [Releases](../../releases) 页面查看全部版本）
 
 ## 🎮 使用方法

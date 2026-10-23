@@ -1,0 +1,9 @@
+{
+  "extName": {
+    "message": "VRChat 视频解析器",
+    "description": "浏览器里显示的扩展名称"
+  },
+  "extDesc": {
+    "message": "从网页提取视频直链（MP4/WebM），一键复制到 VRChat 视频播放器。支持 Bilibili（含分P/番剧）解析、斗鱼/虎牙/B站直播流抓取与转推。"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "extName": {
+    "message": "VRChat Video Parser",
+    "description": "Extension name shown in the browser"
+  },
+  "extDesc": {
+    "message": "Get direct video links from web pages and play them in VRChat. Bilibili videos, multi-part pages and live streams supported."
+  }
+}

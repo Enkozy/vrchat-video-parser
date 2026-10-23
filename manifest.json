@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "VRChat 视频解析器",
+  "default_locale": "en",
+  "name": "__MSG_extName__",
   "version": "2.3.2",
   "author": "知音illya",
-  "description": "从网页提取视频直链（MP4/WebM），一键复制到 VRChat 视频播放器。支持 Bilibili（含分P/番剧）解析、斗鱼/虎牙/B站直播流抓取与转推。",
+  "description": "__MSG_extDesc__",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -12,7 +13,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "VRChat 视频解析器",
+    "default_title": "__MSG_extName__",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
